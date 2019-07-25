@@ -15,8 +15,9 @@ from keras.layers import LSTM, Dense, Activation, Dropout, Input, Bidirectional
 from keras.models import Model, load_model
 
 class DataGenerator(Sequence):
-    def __init__(self, df, feature=13, max_frames=200, batch_size=2, shuffle=True):
+    def __init__(self, df, feature=13, max_frames=200, batch_size=64, shuffle=True):
         self.df = df.copy()
+        self.feature = feature
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.indices = np.arange(df.shape[0])
@@ -83,7 +84,7 @@ class DataGenerator(Sequence):
         x_data = np.zeros((self.batch_size, self.max_frames, self.feature))
         targets = []
         paths = self.load_data(indices_in_batch)
-        for count, i in enumerate(indices_in_batch):
+        for count, i in enumerate(paths):
             frames, label = self.extract_feature(i)
             self.classes.append(label)
             targets.append(label)
@@ -105,7 +106,7 @@ def build_model():
     model.compile(loss="sparse_categorical_crossentropy", optimizer="adam", metrics=['acc'])
     return model
             
-print('Hello VSC')
+
 model = build_model()
 model.summary()
 
@@ -121,6 +122,7 @@ for r, d, f in os.walk(path):
         data_train.append(os.path.join(r, _f))
 
 shuf(data_train)
+data_train = np.asarray(data_train)
 
 path = 'dataset/validate'
 data_validate = []
@@ -130,7 +132,7 @@ for r, d, f in os.walk(path):
         data_validate.append(os.path.join(r, _f))
 
 shuf(data_validate)
-
+data_validate= np.asarray(data_validate)
 path = 'dataset/test'
 data_test = []
 
@@ -139,42 +141,44 @@ for r, d, f in os.walk(path):
         data_test.append(os.path.join(r, _f))
 
 shuf(data_test)
+data_test = np.asarray(data_test)
 
 ##################### save to CSV ######################
-df_train = pd.DataFrame(data_train, column=['file'])
+#df_train = pd.DataFrame(data_train,columns=['file'])
 #df_train.to_csv('data_train.csv', index=None)
-df_validate = pd.DataFrame(data_validate, column=['file'])
+#df_validate = pd.DataFrame(data_validate,columns=['file']).values
 #df_validate.to_csv('data_val.csv', index=None)
-df_test = pd.DataFrame(data_test, column=['file'])
+#df_test = pd.DataFrame(data_test, columns=['file']).values
 #df_test.to_csv('data_test.csv', index=None)
+training_generator = DataGenerator(data_train)
+validate_generator = DataGenerator(data_validate)
 
-training_generator = DataGenerator(df_train)
-validate_generator = DataGenerator(df_validate)
-t = time.time()
+t = time.strftime('%Y%m%d_%X')
 ######################## TRAINING ###########################
 print('Training')
 step_p_epoch = training_generator.__len__()
 history = model.fit_generator(generator=training_generator, steps_per_epoch=step_p_epoch, epochs=num_epochs, verbose=1, validation_data=validate_generator)
 
-model.save('models/' + str(t) + '.h5')
+model.save('models/' + t + '.h5')
 print('Saved model')
 loss = history.history['loss']
+
 val_loss = history.history['val_loss']
 acc = history.history['acc']
 val_acc = history.history['val_acc']
 x_epochs = range(1, len(loss) + 1)
 
-plt.plot(epochs, loss, 'bo', label='Training loss')
-plt.plot(epochs, val_loss, 'b', label='Validation loss')
-plt.plot(epochs, acc, 'ro', label='Training accuracy')
-plt.plot(epochs, val_acc, 'r', label='Validation accuracy')
+plt.plot(x_epochs, loss, 'bo', label='Training loss')
+plt.plot(x_epochs, val_loss, 'b', label='Validation loss')
+plt.plot(x_epochs, acc, 'ro', label='Training accuracy')
+plt.plot(x_epochs, val_acc, 'r', label='Validation accuracy')
 plt.xlabel('Epochs')
 plt.legend()
 plt.tight_layout()
-plt.savefig('reports/Graph ' + str(t) + '.png')
+plt.savefig('reports/Loss_acc_' + t + '.png')
 print('Saved graph image')
 
-test_generator = DataGenerator(df_test)
+test_generator = DataGenerator(data_test)
 Y_pred = model.predict_generator(test_generator, verbose=1)
 y_pred = np.argmax(Y_pred, axis=1)
 y_true = np.asarray(test_generator.classes)[:y_pred.shape[0]]
@@ -183,6 +187,7 @@ cm = confusion_matrix(y_true, y_pred)
 cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
 
 fig, ax = plt.subplots()
+fig.set_size_inches(15, 15, forward=True)
 im = ax.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
 ax.figure.colorbar(im, ax=ax)
 # We want to show all ticks...
@@ -198,7 +203,8 @@ thresh = cm.max() / 2.
 for i in range(cm.shape[0]):
     for j in range(cm.shape[1]):
         ax.text(j, i, format(cm[i, j], fmt),ha="center", va="center", color="white" if cm[i, j] > thresh else "black")
-fig.tight_layout()
-plt.savefig('reports/Confusion matrix ' + str(t) + '.png')
+#fig.tight_layout()
+plt.savefig('reports/Confusion_matrix_' + t + '.png')
+print('Saved confusion matrix')
 
 #print(classification_report(y_true, y_pred, target_names=target_names))
